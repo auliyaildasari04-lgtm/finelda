@@ -101,7 +101,43 @@ function selected(){let m=document.getElementById('month').value;return state.tr
 function sortTx(a){return [...a].sort((x,y)=>x.date.localeCompare(y.date)||x.id-y.id)}
 function amount(t){return (Number(t.income)||0)-(Number(t.expense)||0)}
 function addTx(t){state.transactions.push({...t,id:Date.now()+Math.random()});save();render()}
-document.getElementById('txForm').onsubmit=e=>{e.preventDefault();let f=new FormData(e.target),inc=+f.get('income'),exp=+f.get('expense');if((inc>0)===(exp>0)){alert('Isi salah satu: pemasukan atau pengeluaran.');return}let cat=ACCOUNTS.find(a=>a[1]===f.get('category'));addTx({date:f.get('date'),pocket:f.get('pocket'),category:f.get('category'),detail:f.get('detail'),income:inc,expense:exp,kind:cat?.[2]||'expense'});e.target.reset();e.target.date.value=today();e.target.income.value=0;e.target.expense.value=0};
+document.getElementById('txForm').onsubmit = async e => {
+  e.preventDefault();
+  let f = new FormData(e.target), inc = +f.get('income'), exp = +f.get('expense');
+  if ((inc > 0) === (exp > 0)) {
+    alert('Isi salah satu: pemasukan atau pengeluaran.');
+    return;
+  }
+  let cat = ACCOUNTS.find(a => a[1] === f.get('category'));
+  const txData = {
+    date: f.get('date'),
+    pocket: f.get('pocket'),
+    category: f.get('category'),
+    detail: f.get('detail'),
+    income: inc,
+    expense: exp,
+    kind: cat?.[2] || 'expense'
+  };
+
+  const { error } = await insertTransaction({
+    tanggal: txData.date,
+    kantong: txData.pocket,
+    kategori: txData.category,
+    uraian: txData.detail,
+    masuk: txData.income,
+    keluar: txData.expense
+  });
+  if (error) {
+    alert('Gagal menyimpan ke Supabase: ' + error.message);
+    return;
+  }
+
+  addTx(txData);
+  e.target.reset();
+  e.target.date.value = today();
+  e.target.income.value = 0;
+  e.target.expense.value = 0;
+};;
 function showTransfer(){document.getElementById('transferDialog').showModal()}
 document.getElementById('transferForm').onsubmit=e=>{e.preventDefault();let f=new FormData(e.target),from=f.get('from'),to=f.get('to'),v=+f.get('amount');if(from===to||v<=0){alert('Pilih dua kantong berbeda dan nominal positif.');return}let d=f.get('date'),detail=f.get('detail')||'Mutasi dana';addTx({date:d,pocket:from,category:'Transfer keluar',detail,expense:v,income:0,kind:'transfer',transfer:true});addTx({date:d,pocket:to,category:'Transfer masuk',detail,income:v,expense:0,kind:'transfer',transfer:true});document.getElementById('transferDialog').close();e.target.reset()};
 function balances(){let b={...state.opening};POCKETS.forEach(p=>b[p]=Number(b[p])||0);state.transactions.forEach(t=>{b[t.pocket]=(b[t.pocket]||0)+amount(t)});return b}
@@ -124,4 +160,16 @@ let lines=ACCOUNTS.map(a=>{let v=0;if(a[2]==='asset'){v=(b[a[1]]||0)+(a[1]==='Pi
 function exportExcel(){if(!window.XLSX){alert('Library Excel belum termuat. Periksa koneksi internet.');return}let wb=XLSX.utils.book_new(),tx=state.transactions.map(t=>({Tanggal:t.date,Kantong:t.pocket,Kategori:t.category,Uraian:t.detail,Pemasukan:t.income||0,Pengeluaran:t.expense||0,Jenis:t.kind,Transfer:!!t.transfer}));XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(tx),'TRANSAKSI');XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(POCKETS.map(p=>({Kantong:p,'Saldo awal':state.opening[p]||0,'Saldo saat ini':balances()[p]}))),'SALDO KANTONG');XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(ACCOUNTS.map(a=>({Kode:a[0],Akun:a[1],Jenis:a[2]}))),'COA');XLSX.writeFile(wb,'my-finance-ilda-backup.xlsx')}
 function importExcel(e){let file=e.target.files[0];if(!file)return;if(!window.XLSX){alert('Library Excel belum termuat.');return}let reader=new FileReader();reader.onload=ev=>{try{let wb=XLSX.read(ev.target.result,{type:'array',cellDates:true});let rows=[],seen=new Set();for(let sn of wb.SheetNames){let norm=sn.toLowerCase();if(!['petty cash','laporan transaksi kas','bank','laporan transaksi bank'].includes(norm))continue;let data=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:null});let bank=norm.includes('bank');for(let i=0;i<data.length;i++){let r=data[i];let date=r[1],category=r[2],detail=r[3],pocket=bank?r[4]:'Kas Tunai',inc=Number(r[5])||0,exp=Number(r[6])||0;if(!date||(!inc&&!exp)||String(category||'').toLowerCase().includes('saldo awal'))continue;let d=date instanceof Date?date.toISOString().slice(0,10):String(date).slice(0,10);let p=POCKETS.find(x=>x.toLowerCase()===String(pocket||'').toLowerCase())||POCKETS.find(x=>x.toLowerCase().includes(String(pocket||'').toLowerCase()))||'Kas Tunai';let key=[d,p,category,detail,inc,exp].join('|');if(seen.has(key))continue;seen.add(key);let acct=ACCOUNTS.find(a=>a[1]===category||a[1].toLowerCase()===String(category||'').toLowerCase());let kind=acct?.[2]||'expense';if(String(category||'').toLowerCase()==='piutang')kind='receivable';let isTransfer=(!category||String(detail||'').toLowerCase().includes('mutasi dana'))&&(String(detail||'').toLowerCase().includes('mutasi')||!category);rows.push({date:d,pocket:p,category:String(category||(isTransfer?'Transfer':'Lainnya')),detail:String(detail||''),income:inc,expense:exp,kind:isTransfer?'transfer':kind,transfer:isTransfer,id:Date.now()+Math.random()})}}if(!rows.length){alert('Tidak ditemukan transaksi. Format yang didukung: sheet PETTY CASH dan BANK, dengan kolom tanggal, keterangan, uraian, kantong, pemasukan, pengeluaran.');return}if(confirm(`Ditemukan ${rows.length} transaksi. Tambahkan ke data aplikasi?`)){state.transactions.push(...rows);save();render();alert('Import selesai. Periksa kembali kategori dan rekening hasil impor.')}}catch(err){alert('Gagal membaca Excel: '+err.message)}e.target.value=''};reader.readAsArrayBuffer(file)}
 render();
-</script></body></html>
+</script>async function loadFromSupabase() {
+  const { data, error } = await fetchTransactions();
+  if (error) {
+    console.warn("Gagal sinkron dari Supabase:", error.message);
+    return;
+  }
+  if (Array.isArray(data)) {
+    state.transactions = data;
+    save();
+    render();
+  }
+}
+loadFromSupabase();</body></html>
