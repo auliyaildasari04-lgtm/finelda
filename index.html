@@ -7,12 +7,22 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 body{background:#f6f7fb;color:#172033;font-family:Inter,ui-sans-serif,system-ui} .panel{background:white;border:1px solid #e8eaf0;border-radius:16px;box-shadow:0 4px 18px #18223a08}.navbtn{padding:10px 13px;border-radius:10px;white-space:nowrap}.navbtn.active{background:#172554;color:white}.field{width:100%;border:1px solid #d8dce6;border-radius:10px;padding:10px;background:white}.btn{padding:10px 14px;border-radius:10px;font-weight:600}.primary{background:#172554;color:white}.secondary{background:#eef2ff;color:#172554}.muted{color:#64748b} th,td{padding:10px 12px;text-align:left;border-bottom:1px solid #edf0f4;white-space:nowrap} th{font-size:12px;color:#64748b;background:#f8fafc} .tablewrap{overflow:auto}
-</style><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script></head>
+</style></head>
 <body>
+<div id="authGate" class="min-h-screen flex items-center justify-center p-4">
+ <div class="panel w-full max-w-md p-6 space-y-4">
+  <div><div class="text-xs tracking-widest font-bold text-indigo-600 uppercase">Personal finance tracker</div><h1 class="text-2xl font-extrabold">Finelda</h1><p class="text-sm muted">Masuk untuk membuka dan menyinkronkan data Finelda di perangkatmu.</p></div>
+  <div class="flex gap-2"><button id="showLogin" class="btn primary flex-1" type="button">Masuk</button><button id="showRegister" class="btn secondary flex-1" type="button">Buat akun</button></div>
+  <form id="loginForm" class="space-y-3"><label class="block text-sm">Email<input id="loginEmail" type="email" required autocomplete="email" class="field mt-1"></label><label class="block text-sm">Password<input id="loginPassword" type="password" required autocomplete="current-password" class="field mt-1"></label><button class="btn primary w-full" type="submit">Masuk ke Finelda</button></form>
+  <form id="registerForm" class="space-y-3 hidden"><label class="block text-sm">Email<input id="registerEmail" type="email" required autocomplete="email" class="field mt-1"></label><label class="block text-sm">Password<input id="registerPassword" type="password" required minlength="6" autocomplete="new-password" class="field mt-1"></label><p class="text-xs muted">Gunakan password minimal 6 karakter. Simpan password dengan aman.</p><button class="btn primary w-full" type="submit">Buat akun Finelda</button></form>
+  <p id="authMessage" class="text-sm muted" role="status">Silakan masuk atau buat akun baru.</p>
+ </div>
+</div>
+<div id="appShell" class="hidden">
 <header class="bg-white border-b border-slate-200">
  <div class="max-w-7xl mx-auto px-4 py-5 flex flex-wrap items-center justify-between gap-3">
   <div><div class="text-xs tracking-widest font-bold text-indigo-600 uppercase">Personal finance tracker</div><h1 class="text-2xl font-extrabold">my finance, ilda</h1><p class="text-sm muted">Catat, pantau, dan pahami arus keuanganmu.</p></div>
-  <div class="flex gap-2 flex-wrap"><button class="btn secondary" onclick="document.getElementById('importFile').click()">Import Excel</button><button class="btn primary" onclick="exportExcel()">Export Excel</button><input id="importFile" type="file" accept=".xlsx,.xls" class="hidden" onchange="importExcel(event)"></div>
+  <div class="flex gap-2 flex-wrap items-center"><span id="signedInEmail" class="text-xs muted"></span><button class="btn secondary" type="button" onclick="logoutFinelda()">Keluar</button><button class="btn secondary" onclick="document.getElementById('importFile').click()">Import Excel</button><button class="btn primary" onclick="exportExcel()">Export Excel</button><input id="importFile" type="file" accept=".xlsx,.xls" class="hidden" onchange="importExcel(event)"></div>
  </div>
 </header>
 <main class="max-w-7xl mx-auto p-4 space-y-5">
@@ -44,38 +54,14 @@ body{background:#f6f7fb;color:#172033;font-family:Inter,ui-sans-serif,system-ui}
  <section id="income" class="tab hidden space-y-4"><h2 class="text-xl font-bold">Laporan Pendapatan & Pengeluaran</h2><div class="grid md:grid-cols-3 gap-3" id="totals"></div><div class="grid md:grid-cols-2 gap-4"><div class="panel p-4"><h3 class="font-bold mb-2">Pendapatan per kategori</h3><div id="incomeRows"></div></div><div class="panel p-4"><h3 class="font-bold mb-2">Pengeluaran per kategori</h3><div id="expenseRows"></div></div></div></section>
  <section id="balance" class="tab hidden space-y-4"><h2 class="text-xl font-bold">Posisi Keuangan & Neraca Saldo</h2>
  <div class="panel p-4 space-y-3"><div><h3 class="font-bold">Input saldo awal</h3><p class="text-sm muted">Isi saldo per tanggal mulai pembukuan. Kosongkan atau isi 0 jika tidak ada saldo. Perubahan akan disimpan otomatis.</p></div><form id="openingForm" class="space-y-4"><div><h4 class="font-semibold text-sm mb-2">Aset — kas dan rekening</h4><div id="openingAssetInputs" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3"></div></div><div><h4 class="font-semibold text-sm mb-2">Piutang</h4><label class="text-sm">Saldo awal piutang<input id="openingReceivableInput" type="number" min="0" step="1" class="field mt-1" value="0"></label></div><div><h4 class="font-semibold text-sm mb-2">Liabilitas — utang dan titipan</h4><div id="openingLiabilityInputs" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3"></div></div><button class="btn primary" type="submit">Simpan saldo awal</button><span id="openingMsg" class="text-sm muted"></span></form></div><div class="grid md:grid-cols-3 gap-3" id="balanceCards"></div><div class="panel p-4"><h3 class="font-bold mb-2">Posisi Keuangan</h3><div id="balanceRows"></div></div><div class="panel p-4"><h3 class="font-bold mb-2">Neraca Saldo (ringkasan saldo akun)</h3><div class="tablewrap"><table class="w-full text-sm"><thead><tr><th>Kode</th><th>Nama akun</th><th>Debit</th><th>Kredit</th></tr></thead><tbody id="trialRows"></tbody></table></div></div><p class="text-xs muted">Catatan: Neraca menampilkan saldo akun yang dapat dihitung dari transaksi yang dicatat di aplikasi. Ekuitas awal merupakan angka penyeimbang dari saldo awal yang diimpor/diatur; verifikasi dengan dokumen sumber sebelum dipakai sebagai laporan resmi.</p></section>
- <section class="panel p-4 text-sm muted"><b>Data tersimpan otomatis di browser ini.</b> Ekspor file Excel secara berkala sebagai backup. Data LocalStorage tidak otomatis tersinkron ke perangkat lain.</section>
+ <section class="panel p-4 text-sm muted"><b>Data tersimpan di akun Finelda dan disinkronkan melalui cloud.</b> Ekspor file Excel secara berkala sebagai backup. Selalu gunakan akun yang sama di laptop dan HP.</section>
 </main>
 <dialog id="transferDialog" class="rounded-2xl p-0 w-[min(94vw,520px)] shadow-xl"><form id="transferForm" class="p-5 space-y-3"><div class="flex justify-between"><h3 class="text-lg font-bold">Transfer / Tarik tunai</h3><button type="button" onclick="document.getElementById('transferDialog').close()">✕</button></div><p class="text-sm muted">Mutasi antar-kantong tidak dihitung sebagai pendapatan atau pengeluaran.</p><label class="block text-sm">Tanggal<input name="date" type="date" required class="field mt-1"></label><label class="block text-sm">Dari kantong<select name="from" id="fromPocket" class="field mt-1"></select></label><label class="block text-sm">Ke kantong<select name="to" id="toPocket" class="field mt-1"></select></label><label class="block text-sm">Nominal (Rp)<input name="amount" type="number" min="1" required class="field mt-1"></label><label class="block text-sm">Uraian<input name="detail" class="field mt-1" value="Mutasi dana"></label><button class="btn primary w-full">Simpan transfer</button></form></dialog>
-<script>const supabaseClient = window.supabase.createClient(
-  "https://gsbisxkbkqqkpmstpwvi.supabase.co",
-  "sb_publishable_BFkRYPbfIHidiJoqxZ9c3Q_cdecm_fh"
-);let currentUser = null;
- async function loginWithEmail(email, password) {
-  const { data, error } = await supabaseClient.auth.signInWithPassword({
-    email,
-    password,
-  });
-  if (error) return { error };
-  currentUser = data.user;
-  return { user: data.user };
-}
- async function fetchTransactions() {
-  const { data, error } = await supabaseClient
-    .from("transaction")
-    .select("*")
-    .order("id", { ascending: false });
-  if (error) return { error };
-  return { data };
-}
- async function insertTransaction(payload) {
-  const { data, error } = await supabaseClient
-    .from("transaction")
-    .insert([payload])
-    .select();
-  if (error) return { error };
-  return { data };
-}
+</div><!-- appShell -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script>
 const POCKETS=['Kas Tunai','BSI','SeaBank','Bank Jago (Kantong Utama)','Tab.Bulanan','Dana Darurat','Tab. Rumah','Tab. Karimunjawa','Rek. Mas Husni','Tabungan Karimunjawa','Tabungan Remaja','Tabungan E-Emas'];
 const ACCOUNTS=[
 ['1-111','Kas Tunai','asset'],['1-112','BSI','asset'],['1-113','SeaBank','asset'],['1-114','Bank Jago (Kantong Utama)','asset'],['1-115','Piutang','receivable'],['1-116','Tab.Bulanan','asset'],['1-117','Dana Darurat','asset'],['1-118','Tab. Rumah','asset'],['1-119','Tab. Karimunjawa','asset'],['1-120','Rek. Mas Husni','asset'],['1-122','Tabungan Karimunjawa','asset'],['1-123','Tabungan Remaja','asset'],['1-124','Tabungan E-Emas','asset'],
@@ -85,9 +71,22 @@ const ACCOUNTS=[
 ];
 const money=n=>new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(Number(n)||0);
 const today=()=>new Date().toISOString().slice(0,10);
-let state=JSON.parse(localStorage.getItem('ildaFinanceV2')||'null')||{opening:{},openingLiabilities:{},openingReceivable:0,transactions:[]};
-state.opening=state.opening||{};state.openingLiabilities=state.openingLiabilities||{};state.openingReceivable=Number(state.openingReceivable)||0;state.transactions=state.transactions||[];
-function save(){localStorage.setItem('ildaFinanceV2',JSON.stringify(state))}
+const firebaseConfig={apiKey:'AIzaSyBWuJh97DkeQ529aValvJkp7SQYy2kX5ow',authDomain:'finelda-myfinance.firebaseapp.com',projectId:'finelda-myfinance',storageBucket:'finelda-myfinance.firebasestorage.app',messagingSenderId:'175419298624',appId:'1:175419298624:web:e60f47a183757f506e20a5'};
+firebase.initializeApp(firebaseConfig);
+const auth=firebase.auth(), db=firebase.firestore();
+let currentUser=null, cloudReady=false, cloudUnsubscribe=null, saveQueue=Promise.resolve();
+const emptyState=()=>({opening:{},openingLiabilities:{},openingReceivable:0,transactions:[]});
+let state=JSON.parse(localStorage.getItem('ildaFinanceV2')||'null')||emptyState();
+function normalizeState(v){v=v&&typeof v==='object'?v:emptyState();v.opening=v.opening||{};v.openingLiabilities=v.openingLiabilities||{};v.openingReceivable=Number(v.openingReceivable)||0;v.transactions=Array.isArray(v.transactions)?v.transactions:[];return v}
+state=normalizeState(state);
+function save(){localStorage.setItem('ildaFinanceV2',JSON.stringify(state));if(cloudReady&&currentUser){const ref=db.collection('users').doc(currentUser.uid).collection('privateData').doc('finance');saveQueue=saveQueue.then(()=>ref.set({state:state,updatedAt:firebase.firestore.FieldValue.serverTimestamp()})).catch(err=>{console.error(err);setAuthMessage('Perubahan tersimpan di perangkat ini, tetapi gagal dikirim ke cloud: '+err.message)})}}
+function setAuthMessage(msg){const el=document.getElementById('authMessage');if(el)el.textContent=msg}
+document.getElementById('showLogin').onclick=()=>{document.getElementById('loginForm').classList.remove('hidden');document.getElementById('registerForm').classList.add('hidden');document.getElementById('showLogin').className='btn primary flex-1';document.getElementById('showRegister').className='btn secondary flex-1';setAuthMessage('Silakan masuk dengan email dan password.')};
+document.getElementById('showRegister').onclick=()=>{document.getElementById('registerForm').classList.remove('hidden');document.getElementById('loginForm').classList.add('hidden');document.getElementById('showRegister').className='btn primary flex-1';document.getElementById('showLogin').className='btn secondary flex-1';setAuthMessage('Buat akun baru. Password minimal 6 karakter.')};
+document.getElementById('loginForm').onsubmit=async e=>{e.preventDefault();setAuthMessage('Sedang masuk...');try{await auth.signInWithEmailAndPassword(document.getElementById('loginEmail').value.trim(),document.getElementById('loginPassword').value)}catch(err){setAuthMessage('Gagal masuk: '+err.message)}};
+document.getElementById('registerForm').onsubmit=async e=>{e.preventDefault();setAuthMessage('Sedang membuat akun...');try{await auth.createUserWithEmailAndPassword(document.getElementById('registerEmail').value.trim(),document.getElementById('registerPassword').value)}catch(err){setAuthMessage('Gagal membuat akun: '+err.message)}};
+async function logoutFinelda(){cloudReady=false;if(cloudUnsubscribe){cloudUnsubscribe();cloudUnsubscribe=null}await auth.signOut()}
+auth.onAuthStateChanged(async user=>{cloudReady=false;if(cloudUnsubscribe){cloudUnsubscribe();cloudUnsubscribe=null}currentUser=user;if(!user){document.getElementById('appShell').classList.add('hidden');document.getElementById('authGate').classList.remove('hidden');document.getElementById('loginPassword').value='';return}setAuthMessage('Menghubungkan data cloud...');const ref=db.collection('users').doc(user.uid).collection('privateData').doc('finance');try{const snap=await ref.get();if(snap.exists){state=normalizeState(snap.data().state);localStorage.setItem('ildaFinanceV2',JSON.stringify(state));}else{const localState=normalizeState(JSON.parse(localStorage.getItem('ildaFinanceV2')||'null'));const hasLocal=localState.transactions.length||Object.values(localState.opening).some(Number)||Object.values(localState.openingLiabilities).some(Number)||Number(localState.openingReceivable);if(hasLocal&&confirm('Ditemukan data Finelda yang tersimpan di browser ini. Unggah data tersebut ke akun cloud baru? Pilih Batal jika ingin mulai dengan data kosong.'))state=localState;else state=emptyState();await ref.set({state:state,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});localStorage.setItem('ildaFinanceV2',JSON.stringify(state));}cloudUnsubscribe=ref.onSnapshot(doc=>{if(doc.exists&&doc.data().state){state=normalizeState(doc.data().state);localStorage.setItem('ildaFinanceV2',JSON.stringify(state));if(cloudReady)render() }},err=>setAuthMessage('Gagal menerima sinkronisasi: '+err.message));cloudReady=true;document.getElementById('authGate').classList.add('hidden');document.getElementById('appShell').classList.remove('hidden');document.getElementById('signedInEmail').textContent=user.email||'';render();}catch(err){setAuthMessage('Tidak bisa membuka database. Periksa Security Rules Firestore dan Authorized domains. '+err.message);await auth.signOut()}});
 function options(el,arr){el.innerHTML=arr.map(x=>`<option>${x}</option>`).join('')}
 options(document.getElementById('pocket'),POCKETS);options(document.getElementById('fromPocket'),POCKETS);options(document.getElementById('toPocket'),POCKETS);
 options(document.getElementById('category'),ACCOUNTS.filter(a=>['income','expense','receivable','liability'].includes(a[2])).map(a=>a[1]));
@@ -101,43 +100,7 @@ function selected(){let m=document.getElementById('month').value;return state.tr
 function sortTx(a){return [...a].sort((x,y)=>x.date.localeCompare(y.date)||x.id-y.id)}
 function amount(t){return (Number(t.income)||0)-(Number(t.expense)||0)}
 function addTx(t){state.transactions.push({...t,id:Date.now()+Math.random()});save();render()}
-document.getElementById('txForm').onsubmit = async e => {
-  e.preventDefault();
-  let f = new FormData(e.target), inc = +f.get('income'), exp = +f.get('expense');
-  if ((inc > 0) === (exp > 0)) {
-    alert('Isi salah satu: pemasukan atau pengeluaran.');
-    return;
-  }
-  let cat = ACCOUNTS.find(a => a[1] === f.get('category'));
-  const txData = {
-    date: f.get('date'),
-    pocket: f.get('pocket'),
-    category: f.get('category'),
-    detail: f.get('detail'),
-    income: inc,
-    expense: exp,
-    kind: cat?.[2] || 'expense'
-  };
-
-  const { error } = await insertTransaction({
-    tanggal: txData.date,
-    kantong: txData.pocket,
-    kategori: txData.category,
-    uraian: txData.detail,
-    masuk: txData.income,
-    keluar: txData.expense
-  });
-  if (error) {
-    alert('Gagal menyimpan ke Supabase: ' + error.message);
-    return;
-  }
-
-  addTx(txData);
-  e.target.reset();
-  e.target.date.value = today();
-  e.target.income.value = 0;
-  e.target.expense.value = 0;
-};;
+document.getElementById('txForm').onsubmit=e=>{e.preventDefault();let f=new FormData(e.target),inc=+f.get('income'),exp=+f.get('expense');if((inc>0)===(exp>0)){alert('Isi salah satu: pemasukan atau pengeluaran.');return}let cat=ACCOUNTS.find(a=>a[1]===f.get('category'));addTx({date:f.get('date'),pocket:f.get('pocket'),category:f.get('category'),detail:f.get('detail'),income:inc,expense:exp,kind:cat?.[2]||'expense'});e.target.reset();e.target.date.value=today();e.target.income.value=0;e.target.expense.value=0};
 function showTransfer(){document.getElementById('transferDialog').showModal()}
 document.getElementById('transferForm').onsubmit=e=>{e.preventDefault();let f=new FormData(e.target),from=f.get('from'),to=f.get('to'),v=+f.get('amount');if(from===to||v<=0){alert('Pilih dua kantong berbeda dan nominal positif.');return}let d=f.get('date'),detail=f.get('detail')||'Mutasi dana';addTx({date:d,pocket:from,category:'Transfer keluar',detail,expense:v,income:0,kind:'transfer',transfer:true});addTx({date:d,pocket:to,category:'Transfer masuk',detail,income:v,expense:0,kind:'transfer',transfer:true});document.getElementById('transferDialog').close();e.target.reset()};
 function balances(){let b={...state.opening};POCKETS.forEach(p=>b[p]=Number(b[p])||0);state.transactions.forEach(t=>{b[t.pocket]=(b[t.pocket]||0)+amount(t)});return b}
@@ -160,16 +123,4 @@ let lines=ACCOUNTS.map(a=>{let v=0;if(a[2]==='asset'){v=(b[a[1]]||0)+(a[1]==='Pi
 function exportExcel(){if(!window.XLSX){alert('Library Excel belum termuat. Periksa koneksi internet.');return}let wb=XLSX.utils.book_new(),tx=state.transactions.map(t=>({Tanggal:t.date,Kantong:t.pocket,Kategori:t.category,Uraian:t.detail,Pemasukan:t.income||0,Pengeluaran:t.expense||0,Jenis:t.kind,Transfer:!!t.transfer}));XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(tx),'TRANSAKSI');XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(POCKETS.map(p=>({Kantong:p,'Saldo awal':state.opening[p]||0,'Saldo saat ini':balances()[p]}))),'SALDO KANTONG');XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(ACCOUNTS.map(a=>({Kode:a[0],Akun:a[1],Jenis:a[2]}))),'COA');XLSX.writeFile(wb,'my-finance-ilda-backup.xlsx')}
 function importExcel(e){let file=e.target.files[0];if(!file)return;if(!window.XLSX){alert('Library Excel belum termuat.');return}let reader=new FileReader();reader.onload=ev=>{try{let wb=XLSX.read(ev.target.result,{type:'array',cellDates:true});let rows=[],seen=new Set();for(let sn of wb.SheetNames){let norm=sn.toLowerCase();if(!['petty cash','laporan transaksi kas','bank','laporan transaksi bank'].includes(norm))continue;let data=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:null});let bank=norm.includes('bank');for(let i=0;i<data.length;i++){let r=data[i];let date=r[1],category=r[2],detail=r[3],pocket=bank?r[4]:'Kas Tunai',inc=Number(r[5])||0,exp=Number(r[6])||0;if(!date||(!inc&&!exp)||String(category||'').toLowerCase().includes('saldo awal'))continue;let d=date instanceof Date?date.toISOString().slice(0,10):String(date).slice(0,10);let p=POCKETS.find(x=>x.toLowerCase()===String(pocket||'').toLowerCase())||POCKETS.find(x=>x.toLowerCase().includes(String(pocket||'').toLowerCase()))||'Kas Tunai';let key=[d,p,category,detail,inc,exp].join('|');if(seen.has(key))continue;seen.add(key);let acct=ACCOUNTS.find(a=>a[1]===category||a[1].toLowerCase()===String(category||'').toLowerCase());let kind=acct?.[2]||'expense';if(String(category||'').toLowerCase()==='piutang')kind='receivable';let isTransfer=(!category||String(detail||'').toLowerCase().includes('mutasi dana'))&&(String(detail||'').toLowerCase().includes('mutasi')||!category);rows.push({date:d,pocket:p,category:String(category||(isTransfer?'Transfer':'Lainnya')),detail:String(detail||''),income:inc,expense:exp,kind:isTransfer?'transfer':kind,transfer:isTransfer,id:Date.now()+Math.random()})}}if(!rows.length){alert('Tidak ditemukan transaksi. Format yang didukung: sheet PETTY CASH dan BANK, dengan kolom tanggal, keterangan, uraian, kantong, pemasukan, pengeluaran.');return}if(confirm(`Ditemukan ${rows.length} transaksi. Tambahkan ke data aplikasi?`)){state.transactions.push(...rows);save();render();alert('Import selesai. Periksa kembali kategori dan rekening hasil impor.')}}catch(err){alert('Gagal membaca Excel: '+err.message)}e.target.value=''};reader.readAsArrayBuffer(file)}
 render();
-</script>async function loadFromSupabase() {
-  const { data, error } = await fetchTransactions();
-  if (error) {
-    console.warn("Gagal sinkron dari Supabase:", error.message);
-    return;
-  }
-  if (Array.isArray(data)) {
-    state.transactions = data;
-    save();
-    render();
-  }
-}
-loadFromSupabase();</body></html>
+</script></body></html>
